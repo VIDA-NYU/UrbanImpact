@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet Heatmap</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <style>
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="map-container">
+            <div style="margin-top: 12px;">Map!!</div>
+            <!-- Search Box -->
+            <div class="search-container">
+                <input type="text" id="search-box" placeholder="Search by Borough, Zip, or Street...">
+            </div>
+            <div style="margin-top: 12px;"id="map"></div>
+        </div>
+        <!-- Right side: Chat -->
+        <div id="chat-container">
+            <div id="chat-box"></div>
+            <input id="chat-input" type="text" placeholder="Ask something..." />
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+</body>
+</html>
