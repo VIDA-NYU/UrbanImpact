@@ -22,8 +22,17 @@ module.exports = {
     }),
   ],
   devServer: {
+    // static: [
+    //     {
+    //       directory: path.join(__dirname, 'dist'),
+    //     },
+    //     {
+    //       directory: path.join(__dirname, 'data'), // Add this line
+    //       publicPath: '/data', // Maps /data path to the 'data' folder in the server
+    //     },
+    //   ],
     static: {
-      directory: path.join(__dirname, 'dist'),
+      directory: path.join(__dirname, 'public'),
     },
     compress: true,
     port: 8080,
