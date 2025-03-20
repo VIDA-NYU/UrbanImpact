@@ -75,19 +75,16 @@ async def chat(request: ChatRequest):
     print("base64_image")
     # Asking the LLM to return coordinates in a specific format
     user_question = request.question
-    base64_image = request.image  # Image in Base64 format
-    image_list = base64_image.split(',') if base64_image else []  # Convert to list
+    image_urls = request.image  # Image in Base64 format
+    image_list = image_urls.split(',') if image_urls else []  # Convert to list
 
     print("Received images:", image_list)  # Debugging
-    # base64_image2 = await fetch_image_as_base64(base64_image)
-
     # Example usage:
     # image_urls = ["http://127.0.0.1:8000/data/NYC/data/750426175646560.jpg",
     #             "http://127.0.0.1:8000/data/NYC/data/788625419835339.jpg"]
 
-    image_urls = image_list
     # Limit to a maximum of 3 images
-    limited_image_urls = image_urls[:3] 
+    limited_image_urls = image_list[:3] 
     # Fetch multiple images
     base64_images = await asyncio.gather(*(fetch_image_as_base64(url) for url in limited_image_urls))
 
@@ -102,11 +99,6 @@ async def chat(request: ChatRequest):
         response = ollama.chat(
             model="llama3.2-vision",
             messages= messages
-            # [
-            #     # {"role": "user", "content": prompt, "images": [base64_image]}
-            #     {"role": "user", "content": prompt, "images": base64_images}
-
-            # ]
         )
         response_text = response["message"]["content"]
         print("LLM Response:", response_text)  # Print the response for debugging
