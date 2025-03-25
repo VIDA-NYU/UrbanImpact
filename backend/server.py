@@ -38,32 +38,6 @@ async def fetch_multiple_images(image_paths: list[str]) -> dict[str, str]:
     return {path: result if isinstance(result, str) else f"Error: {result}" 
             for path, result in zip(image_paths, results)}
 
-def fetch_image_as_base64_(image_path: str) -> str:
-    """Fetch image from disk or URL and convert it to Base64."""
-    print("Fetching image from:", image_path)
-    try:
-        if image_path.startswith("http"):  # Handle URL-based images
-            print("IF Fetching image from:", image_path)
-            response = requests.get(image_path)
-            print("requests Fetching image from:", image_path)
-
-            response.raise_for_status()
-            print("requests Fetching image from:", image_path)
-
-            image_data = response.content
-            print("image_data Fetching image from:", image_path)
-
-        else:  # Handle local file paths
-            print("else Fetching image from:", image_path)
-            with open(image_path, "rb") as image_file:
-                print("open Fetching image from:", image_path)
-                image_data = image_file.read()
-        print("return Fetching image from:", image_path)
-        return base64.b64encode(image_data).decode("utf-8")
-    except Exception as e:
-        raise Exception(f"Image processing error: {str(e)}")  # Standard Exception
-
-
 class ChatRequest(BaseModel):
     question: str
     image: str  # Base64-encoded image string
@@ -84,12 +58,73 @@ async def chat(request: ChatRequest):
     #             "http://127.0.0.1:8000/data/NYC/data/788625419835339.jpg"]
 
     # Limit to a maximum of 3 images
-    limited_image_urls = image_list[:3] 
+    limited_image_urls = image_list[:1] 
     # Fetch multiple images
     base64_images = await asyncio.gather(*(fetch_image_as_base64(url) for url in limited_image_urls))
 
-    prompt = f"{user_question} Your response should top 3 reasons. Please parse your respond in the following format: {{'first_reason': <first explanation>, 'second_reason': <second explanation>, 'second_reason': <second explanation>, 'latitude': <lat>, 'longitude': <lon>}}."
-    
+    prompt = f"This is the user question: {user_question}"
+    print(prompt)
+    prompt += extractLocationDescritption(prompt)
+
+    if len(limited_image_urls) > 0:
+        prompt += " Next, using only the street view imagery that I have provided, provide a detailed description of this intersection, highlighting relevant characteristics such as road layout, pedestrian facilities, traffic signals, and surrounding structures. Do not refer to any external imagery."
+
+    prompt += """ Then, identify the top three potential reasons for vehicle collisions at this intersection. 
+    For each reason, provide a detailed explanation and specify the percentage of influence attributed to:
+    - Visual observations from the image.
+    - Urban infrastructure factors (such as road design, signal placement, and traffic rules).
+
+    Additionally:
+    - Provide exactly **four keywords** for each collision risk factor.
+    - Include a **short conclusion (max 350 characters)** summarizing key insights.
+
+    ### **IMPORTANT INSTRUCTION:**  
+    ❗ **Return only JSON. No additional explanations, text, or formatting.**  
+    ❗ **Do not include any preamble, introduction, or markdown formatting.**  
+    ❗ **Ensure the response is in the following strict JSON structure:**
+    ❗ **Ensure the JSON is well-formed and fully closed before returning it.
+
+    {
+    "location": {
+        "intersection": "<intersection_name>",
+        "latitude": <lat>,
+        "longitude": <lon>
+    },
+    "collision_risk_factors": [
+        {
+        "risk_factor": "<name_of_risk_1>",
+        "description": "<detailed_explanation>",
+        "keywords": ["<keyword_1>", "<keyword_2>", "<keyword_3>", "<keyword_4>"],
+        "influence_attribution": {
+            "visual_observation_percentage": <percentage>,
+            "urban_infrastructure_percentage": <percentage>
+        }
+        },
+        {
+        "risk_factor": "<name_of_risk_2>",
+        "description": "<detailed_explanation>",
+        "keywords": ["<keyword_1>", "<keyword_2>", "<keyword_3>", "<keyword_4>"],
+        "influence_attribution": {
+            "visual_observation_percentage": <percentage>,
+            "urban_infrastructure_percentage": <percentage>
+        }
+        },
+        {
+        "risk_factor": "<name_of_risk_3>",
+        "description": "<detailed_explanation>",
+        "keywords": ["<keyword_1>", "<keyword_2>", "<keyword_3>", "<keyword_4>"],
+        "influence_attribution": {
+            "visual_observation_percentage": <percentage>,
+            "urban_infrastructure_percentage": <percentage>
+        }
+        }
+    ],
+    "conclusion": "<summary_text (max 350 characters)>"
+    }
+    """
+
+    print(prompt)    
+
     # Prepare the messages array (one image per message)
     messages = [{"role": "user", "content": prompt}]
     messages += [{"role": "user", "images": [img]} for img in base64_images]
@@ -104,13 +139,70 @@ async def chat(request: ChatRequest):
         print("LLM Response:", response_text)  # Print the response for debugging
 
         # region = extract_region_from_response(response_text)
-        
         # return {"answer": response_text, "region": "region"}
         return {"answer": response_text, "region": ""}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# import requests
+import osmnx as ox
+
+def extractLocationDescritption(text):
+    # Coordinates
+    # lat, lon = 40.6959659, -73.9845903
+    lat, lon = extract_latlon_using_split(text)
+    # Ensure latitude and longitude are floats
+    lat, lon = float(lat), float(lon)
+
+    print("Latitude:", lat)
+    print("Longitude:", lon)
+    # Get detailed location info from OSM
+    url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&addressdetails=1"
+    headers = { "User-Agent": "MyGeoApp/1.0 (scq202@nyu.edu)"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    print(data)
+    # Extract road and cross street
+    road = data["address"].get("road", "Unknown road")
+    suburb = data["address"].get("suburb", "")
+    city = data["address"].get("city", "")
+    state = data["address"].get("state", "")
+    country = data["address"].get("country", "")
+
+    # Use OSMnx to find connected streets (intersection)
+    G = ox.graph_from_point((lat, lon), dist=50, network_type="all")
+    nearest_node = ox.distance.nearest_nodes(G, lon, lat)
+    streets = list(G[nearest_node].keys())
+
+    street_names = set()
+    for street in streets:
+        edge_data = G.get_edge_data(nearest_node, street)
+        for _, edge in edge_data.items():
+            name = edge.get("name", "Unnamed road")
+            if name:
+                street_names.add(name)
+
+    # Construct a structured location description
+    cross_streets = ", ".join(street_names) if street_names else "Unknown intersection"
+    location_description = f"This is an urban intersection at {road} and {cross_streets}, located in {suburb}, {city}, {state}, {country}."
+
+    # Query Ollama with refined location data
+    query = f"Analyze the urban infrastructure at {location_description}. Discuss key aspects such as transportation, connectivity, and notable urban features."
+
+    # # Send to LLM
+    # import ollama
+    # result = ollama.chat(model="llama3.2-vision", messages=[{"role": "user", "content": query}])
+    # print(result["message"]["content"])
+    print(query)
+    return query
+
+def extract_latlon_using_split(text):
+    lat_lon_part = text.split("latitude:")[1].strip()
+    lat_part, lon_part = lat_lon_part.split(" and longitude:")
+    latitude = lat_part.strip().replace("${", "").replace("}", "").rstrip(".")  # Remove trailing period
+    longitude = lon_part.strip().replace("${", "").replace("}", "").rstrip(".")  # Remove trailing period
+    return latitude, longitude
 
 # async def chat(request: ChatRequest):
 #     user_question = request.question
@@ -143,58 +235,19 @@ async def chat(request: ChatRequest):
 #     # # return {"answer": response["message"]["content"]}
 
 
-# import requests
-# import osmnx as ox
 
-# def extractLocationDescritption(text):
-#     # Coordinates
-#     # lat, lon = 40.6959659, -73.9845903
-#     lat, lon = extract_latlon_using_split(text)
+def extract_latlon_using_regex(text):
+    match = re.search(r'latitude:\s*\${(.*?)}\s*and\s*longitude:\s*\${(.*?)}', text)
 
-#     # Get detailed location info from OSM
-#     url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&addressdetails=1"
-#     headers = {"User-Agent": "YourAppName/1.0 (your@email.com)"}
-#     response = requests.get(url, headers=headers)
-#     data = response.json()
-
-#     # Extract road and cross street
-#     road = data["address"].get("road", "Unknown road")
-#     suburb = data["address"].get("suburb", "")
-#     city = data["address"].get("city", "")
-#     state = data["address"].get("state", "")
-#     country = data["address"].get("country", "")
-
-#     # Use OSMnx to find connected streets (intersection)
-#     G = ox.graph_from_point((lat, lon), dist=50, network_type="all")
-#     nearest_node = ox.distance.nearest_nodes(G, lon, lat)
-#     streets = list(G[nearest_node].keys())
-
-#     street_names = set()
-#     for street in streets:
-#         edge_data = G.get_edge_data(nearest_node, street)
-#         for _, edge in edge_data.items():
-#             name = edge.get("name", "Unnamed road")
-#             if name:
-#                 street_names.add(name)
-
-#     # Construct a structured location description
-#     cross_streets = ", ".join(street_names) if street_names else "Unknown intersection"
-#     location_description = f"This is an urban intersection at {road} and {cross_streets}, located in {suburb}, {city}, {state}, {country}."
-
-#     # Query Ollama with refined location data
-#     query = f"Analyze the urban infrastructure at {location_description}. Discuss transportation, connectivity, and urban features."
-
-#     # Send to LLM
-#     import ollama
-#     result = ollama.chat(model="llama3.2-vision", messages=[{"role": "user", "content": query}])
-#     print(result["message"]["content"])
-
-def extract_latlon_using_split(text):
-    lat_lon_part = text.split("latitude:")[1].strip()
-    lat_part, lon_part = lat_lon_part.split(" and longitude:")
-    latitude = lat_part.strip().replace("${", "").replace("}", "")
-    longitude = lon_part.strip().replace("${", "").replace("}", "")
-    return latitude, longitude
+    if match:
+        latitude = match.group(1)
+        longitude = match.group(2)
+        print("Latitude:", latitude)
+        print("Longitude:", longitude)
+        return latitude, longitude
+    else:
+        print("No match found.")
+        return '', ''
 
 def extract_region_from_response(response_text):
     # Try to parse the response based on the format we're expecting
