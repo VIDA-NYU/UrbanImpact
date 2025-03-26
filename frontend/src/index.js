@@ -575,18 +575,25 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton.addEventListener('click', async () => {
         let question = input.value.trim();
         if (!question) return;
-        question = `${question}. The area is located at latitude: ${selected_latitude} and longitude:${selected_longitude}`;
+
         const userMessage = document.createElement('p');
-        userMessage.innerText = `You: ${question}.`;
+        userMessage.innerText = `You: ${question}. The area is located at latitude: ${selected_latitude} and longitude:${selected_longitude}`;
         chatBox.appendChild(userMessage);
 
         console.log("selected_images before join:", selected_images);
         const imageString = selected_images.length > 0 ? selected_images.join(',') : ''; 
 
+        const queryData = { 
+            question: question, 
+            latitude: String(selected_latitude), 
+            longitude: String(selected_longitude), 
+            image: imageString
+        };
+        console.log(queryData);
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question, image: imageString }),
+            body: JSON.stringify(queryData),
         });
 
         const data = await response.json();
