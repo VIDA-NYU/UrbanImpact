@@ -74,23 +74,29 @@ async def chat(request: ChatRequest):
     prompt += f"""
     Follow this chain of thought:
 
-    1. Analyze the urban infrastructure of the intersection at {exact_location}. Discuss key aspects such as transportation, connectivity, and notable urban features.
+    1. **Analyze the Urban Infrastructure:**
+        - Next, Analyze the urban infrastructure of the intersection at {exact_location}. Consider the following:
+        - Road design: Are there multiple lanes? Are the lanes clearly marked? Is there a dedicated turn lane or pedestrian crossing?
+        - Traffic signal placement: Are signals visible and well-synchronized? Are there any confusing or ambiguous signals?
+        - Pedestrian facilities: Are there crosswalks or sidewalks that could potentially interfere with traffic flow or cause unsafe pedestrian conditions?
+        - Surrounding structures: Are there any features in the area that may obstruct drivers' view of traffic signals or pedestrians?
 
-    2. Next, using available street view imagery, provide a detailed description of this intersection, highlighting relevant characteristics such as road layout, pedestrian facilities, traffic signals, and surrounding structures. 
+    2. **Analyze the Street View Imagery:**
+        - First, observe only the street view imagery I have provided. Identify the key characteristics of the intersection, including:
+        - The road layout and lane configuration.
+        - The presence of traffic signals and pedestrian facilities.
+        - Any potential obstructions or visibility issues (e.g., parked cars, trees).
+        - Surrounding structures (e.g., buildings, signs) and their impact on visibility or traffic flow.
 
-    3. Then, based on the urban infrastructure and imagery analysis analysis, determine the top three potential reasons of vehicle collisions at this intersection. 
-       For each reason, provide a detailed explanation and specify the percentage of influence attributed to:
-        - Visual observations from the image.
-        - Urban infrastructure factors (such as road design, signal placement, and traffic rules).
+    3. **Determine Potential Collision Risks:**
+        - Based on the imagery analysis and urban infrastructure analysis, determine the top three potential causes of vehicle collisions at this intersection. 
+        - For each cause, provide:
+            - A detailed explanation of how both visual factors (observed in the imagery) and urban infrastructure factors (such as road design, signal placement) contribute to the risk.
+            - Specify the percentage of influence of each factor (visual observations and urban infrastructure) on the risk.
+            - Include keywords that summarize the collision risk factors.
 
-    Additionally:
-        - Provide exactly **four keywords** for each collision risk factor.
-        - Include a **short conclusion (max 350 characters)** summarizing key insights.
-
-    ### **IMPORTANT INSTRUCTION:**  
-        ❗ **Return only JSON. No additional explanations, text, or formatting.**  
-        ❗ **Do not include any preamble, introduction, or markdown formatting.**  
-        ❗ **Ensure the response is in the following strict JSON structure:**
+    4. **Return Results in Structured Format:**
+        - Provide the results in the following strict JSON format. 
     """
     prompt += """
     {
@@ -132,6 +138,7 @@ async def chat(request: ChatRequest):
     }
 
     ### Important Instructions:
+        - Return **only JSON**. Do not include any additional text, explanations, or formatting.
         - Ensure that the JSON is well-formed and fully closed before returning.
 
     """
@@ -206,6 +213,61 @@ def getAddress(lat, lon):
     # print(result["message"]["content"])
     print(address)
     return address
+def extractLocationDescritption(text):
+    # Coordinates
+    # lat, lon = 40.6959659, -73.9845903
+    lat, lon = extract_latlon_using_split(text)
+    # Ensure latitude and longitude are floats
+    lat, lon = float(lat), float(lon)
+
+    print("Latitude:", lat)
+    print("Longitude:", lon)
+    # Get detailed location info from OSM
+    url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&addressdetails=1"
+    headers = { "User-Agent": "MyGeoApp/1.0 (scq202@nyu.edu)"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    print(data)
+    # Extract road and cross street
+    road = data["address"].get("road", "Unknown road")
+    suburb = data["address"].get("suburb", "")
+    city = data["address"].get("city", "")
+    state = data["address"].get("state", "")
+    country = data["address"].get("country", "")
+
+    # Use OSMnx to find connected streets (intersection)
+    G = ox.graph_from_point((lat, lon), dist=50, network_type="all")
+    nearest_node = ox.distance.nearest_nodes(G, lon, lat)
+    streets = list(G[nearest_node].keys())
+
+    street_names = set()
+    for street in streets:
+        edge_data = G.get_edge_data(nearest_node, street)
+        for _, edge in edge_data.items():
+            name = edge.get("name", "Unnamed road")
+            if name:
+                street_names.add(name)
+
+    # Construct a structured location description
+    cross_streets = ", ".join(street_names) if street_names else "Unknown intersection"
+    location_description = f"{cross_streets}, {suburb}, {city}, {state}, {country}."
+
+    # Query Ollama with refined location data
+    query = f" {location_description} (Latitude: {lat}, Longitude: {lon})"
+
+    # # Send to LLM
+    # import ollama
+    # result = ollama.chat(model="llama3.2-vision", messages=[{"role": "user", "content": query}])
+    # print(result["message"]["content"])
+    print(query)
+    return query
+
+def extract_latlon_using_split(text):
+    lat_lon_part = text.split("latitude:")[1].strip()
+    lat_part, lon_part = lat_lon_part.split(" and longitude:")
+    latitude = lat_part.strip().replace("${", "").replace("}", "").rstrip(".")  # Remove trailing period
+    longitude = lon_part.strip().replace("${", "").replace("}", "").rstrip(".")  # Remove trailing period
+    return latitude, longitude
 
 # async def chat(request: ChatRequest):
 #     user_question = request.question
@@ -238,6 +300,19 @@ def getAddress(lat, lon):
 #     # # return {"answer": response["message"]["content"]}
 
 
+
+def extract_latlon_using_regex(text):
+    match = re.search(r'latitude:\s*\${(.*?)}\s*and\s*longitude:\s*\${(.*?)}', text)
+
+    if match:
+        latitude = match.group(1)
+        longitude = match.group(2)
+        print("Latitude:", latitude)
+        print("Longitude:", longitude)
+        return latitude, longitude
+    else:
+        print("No match found.")
+        return '', ''
 
 def extract_region_from_response(response_text):
     # Try to parse the response based on the format we're expecting
