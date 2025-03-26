@@ -89,6 +89,7 @@ async def chat(request: ChatRequest):
 
     ### **IMPORTANT INSTRUCTION:**  
         ❗ **Return only JSON. No additional explanations, text, or formatting.**  
+        ❗ **Ensure that the JSON is well-formed and fully closed before returning.**
         ❗ **Do not include any preamble, introduction, or markdown formatting.**  
         ❗ **Ensure the response is in the following strict JSON structure:**
     """
@@ -130,9 +131,6 @@ async def chat(request: ChatRequest):
     ],
     "conclusion": "<summary_text (max 350 characters)>"
     }
-
-    ### Important Instructions:
-        - Ensure that the JSON is well-formed and fully closed before returning.
 
     """
 
