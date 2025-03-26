@@ -580,57 +580,113 @@ document.addEventListener('DOMContentLoaded', () => {
         userMessage.innerText = `You: ${question}. The area is located at latitude: ${selected_latitude} and longitude:${selected_longitude}`;
         chatBox.appendChild(userMessage);
 
+            // Show processing message
+        // Create a container for the progress bar
+        const progressContainer = document.createElement('div');
+        progressContainer.id = "progressContainer";
+        progressContainer.style.width = "100%";
+        progressContainer.style.height = "15px";
+        progressContainer.style.backgroundColor = "#e0e0e0";
+        progressContainer.style.borderRadius = "5px";
+        progressContainer.style.margin = "10px 0";
+        progressContainer.style.position = "relative";
+        chatBox.appendChild(progressContainer);
+
+        // Create the progress bar
+        const progressBar = document.createElement('div');
+        progressBar.id = "progressBar";
+        progressBar.style.width = "0%";
+        progressBar.style.height = "100%";
+        progressBar.style.backgroundColor = "#2299DD";
+        progressBar.style.borderRadius = "5px";
+        progressBar.style.transition = "width 0.5s ease";
+        progressContainer.appendChild(progressBar);
+
+        const progressMessage = document.createElement('span');
+        Object.assign(progressMessage.style, {
+            position: "absolute", top: "40%", left: "10%", transform: "translate(-50%, -50%)", color: "#fff", fontSize: "11px", margin: "1px"
+        });
+        progressContainer.appendChild(progressMessage);
+        // Set initial message inside the bar
+        progressMessage.innerText = "In progress ...";
+
+
+        // Simulate progress animation
+        let progress = 0;
+        const interval = setInterval(() => {
+            if (progress < 90) { // Progress stops at 90% until response arrives
+                progress += 10;
+                progressBar.style.width = progress + "%";
+            }
+        }, 600);
+
         console.log("selected_images before join:", selected_images);
         const imageString = selected_images.length > 0 ? selected_images.join(',') : ''; 
 
-        const queryData = { 
-            question: question, 
-            latitude: String(selected_latitude), 
-            longitude: String(selected_longitude), 
-            image: imageString
-        };
-        console.log(queryData);
-        const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queryData),
-        });
-
-        const data = await response.json();
-        const botMessage = document.createElement('p');
-        botMessage.innerText = `AI: ${data.answer}`;
-        chatBox.appendChild(botMessage);
-
-
-
-
-        // Parse `data.answer` since it is a JSON string
-        let parsedData;
         try {
-            parsedData = JSON.parse(data.answer);
+            const queryData = { 
+                question: question, 
+                latitude: String(selected_latitude), 
+                longitude: String(selected_longitude), 
+                image: imageString
+            };
+            console.log(queryData);
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryData),
+            });
+
+            const data = await response.json();
+
+            // Remove the processing message
+            // Remove progress bar
+            clearInterval(interval);
+            progressBar.style.width = "100%"; // Complete the progress
+            setTimeout(() => progressContainer.remove(), 300); // Remove it smoothly after a short delay
+
+            const botMessage = document.createElement('p');
+            botMessage.innerText = `AI: ${data.answer}`;
+            chatBox.appendChild(botMessage);
+
+            // Parse `data.answer` since it is a JSON string
+            let parsedData;
+            try {
+                parsedData = JSON.parse(data.answer);
+            } catch (error) {
+                console.error("Error parsing response:", error);
+            }
+
+            // Append AI response text
+            // const botMessage = document.createElement('p');
+            // botMessage.innerText = `AI: ${parsedData.conclusion}`;
+            // chatBox.appendChild(botMessage);
+
+            // Check if parsedData contains collision risk factors before rendering
+            if (parsedData?.collision_risk_factors) {
+                renderCollisionRiskFactors(parsedData);
+                renderWordCloud(parsedData);
+            }
+            input.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+            // Parse the region data from the response
+            const region = data.region; // Expecting the region as a JSON object, e.g., {latMin, latMax, lonMin, lonMax}
+            console.log("region frontend");
+            console.log(region);
+
+            if (region) {
+                highlightRegion(region);
+            }
         } catch (error) {
-            console.error("Error parsing response:", error);
-        }
+            console.error("Error fetching response:", error);
 
-        // Append AI response text
-        // const botMessage = document.createElement('p');
-        // botMessage.innerText = `AI: ${parsedData.conclusion}`;
-        // chatBox.appendChild(botMessage);
+            // Remove processing message and display error message
+            const processingElement = document.getElementById("processingMessage");
+            if (processingElement) processingElement.remove();
 
-        // Check if parsedData contains collision risk factors before rendering
-        if (parsedData?.collision_risk_factors) {
-            renderCollisionRiskFactors(parsedData);
-            renderWordCloud(parsedData);
-        }
-        input.value = '';
-        chatBox.scrollTop = chatBox.scrollHeight;
-        // Parse the region data from the response
-        const region = data.region; // Expecting the region as a JSON object, e.g., {latMin, latMax, lonMin, lonMax}
-        console.log("region frontend");
-        console.log(region);
-
-        if (region) {
-            highlightRegion(region);
+            const errorMessage = document.createElement('p');
+            errorMessage.innerText = "⚠️ An error occurred. Please try again.";
+            chatBox.appendChild(errorMessage);
         }
     });
 
@@ -715,7 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function addCircleMarkerCollisions(city) {
+    async function addCircleMarkerCollisions(city, chatBox) {
         const feature_name = "Motor_Vehicle_Collisions_Crashes";
         try {
             // const response = await fetch(`http://127.0.0.1:8000/data/${feature_name}/${city}_updated_test_${feature_name}.csv`);
@@ -775,6 +831,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     circle.on('click', async function() {
                         selected_latitude = latitude;
                         selected_longitude = longitude;
+                        const botMessage = document.createElement('p');
+                        botMessage.innerHTML = `📍 <b>Location Selected:</b> (Lat: ${selected_latitude}, Lng: ${selected_longitude})<br>💬 Have any questions about this place?`;
+                        console.log("userMessage");
+                        chatBox.appendChild(botMessage);
                         let imgIds = await fetchAndFindImgIds(img_path, latitude, longitude);
                         // selected_image = `http://127.0.0.1:8000/data/NYC/data/${imgIds[0]}.jpg`
                         selected_images = imgIds.map(id => `http://127.0.0.1:8000/data/NYC/data/${id}.jpg`);
@@ -825,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    addCircleMarkerCollisions("Brooklyn");
+    addCircleMarkerCollisions("Brooklyn", chatBox);
 
     // Load the circle markers for NYC by default
     // addCircleMarkers("NYC");
@@ -862,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // Function to load CSV and add circle markers
+    // Function to load CSV with street view imagery from only brooklyn (first attempt)
     async function addCircleMarkers(city) {
         // // Fetch population data
         // const populationData = await getPopulationData(city);
@@ -899,7 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                     .addTo(map);
                     // Attach click event to fetch img_id dynamically
-                    circle.on('click', async function() {
+                    circle.on('click', async function() { 
                         let imgIds = await fetchAndFindImgIdsDowntown(img_path, d.latitude, d.longitude, city);
                         let imgHtml = imgIds.length > 0 
                             ? `<div class="image-gallery">
