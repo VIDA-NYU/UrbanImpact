@@ -8,7 +8,7 @@ import os
 import tqdm
 import glob
 
-MAPILLARY_ACCESS_TOKEN="MLY|9855752697772462|d839c6cb2db61a5459c31376e1a2e043"
+MAPILLARY_ACCESS_TOKEN=""
 
 def mySort(path):
   ## data/images_1-1000.csv
