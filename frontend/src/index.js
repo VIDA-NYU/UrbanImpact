@@ -681,8 +681,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Error fetching response:", error);
 
             // Remove processing message and display error message
-            const processingElement = document.getElementById("processingMessage");
-            if (processingElement) processingElement.remove();
+            clearInterval(interval);
+            progressBar.style.width = "100%"; // Complete the progress
+            setTimeout(() => progressContainer.remove(), 300); // Remove it smoothly after a short delay
+
 
             const errorMessage = document.createElement('p');
             errorMessage.innerText = "⚠️ An error occurred. Please try again.";
